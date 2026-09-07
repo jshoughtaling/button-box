@@ -4,9 +4,12 @@
 ```bash
   docker run -d --name signal-rest -p 8080:8080 \
     -v "$(pwd)/.signal-rest-data:/home/.local/share/signal-cli" \
-    -e MODE=json-rpc \
     bbernhard/signal-cli-rest-api:latest
 ```
+
+Do not set `MODE=json-rpc`: that mode serves `/v1/receive` over a websocket
+only, and `SignalProvider.receive()`/`signalpoll.py` poll it over plain HTTP
+GET. Leave the container on its default `normal` mode.
 
 ## Signal Linking
 
