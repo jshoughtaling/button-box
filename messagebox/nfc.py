@@ -38,6 +38,11 @@ HEALTH_INTERVAL_S = 2.0
 # Reserved prefix for switch-position UIDs; a real PN532 card is vanishingly
 # unlikely to collide with it, and this transport never runs alongside i2c.
 SWITCH_UID_PREFIX = b"\xf0\x00\x00"
+# Reserved position byte for the switch's stable "all contacts open" detent
+# (a genuine resting click, e.g. an "off" position before position 1) so it
+# can be enrolled like any other position. Kept out of the 0..len(pins)-1
+# range so it can never collide with a real pin index.
+SWITCH_OFF_POSITION = 0xFF
 PULL_UP_BIAS = 32  # lgpio line-request flag; matches hardware-test.sh's button check
 
 
@@ -85,11 +90,14 @@ class SwitchReader:
 
     Each position closes to a dedicated GPIO (pull-up, active-low), common
     wired to GND; a multi-pole switch uses only the grounded pole. Exactly one
-    active line reports a synthetic UID for that
-    position through the same NfcRuntime/NfcRouter pipeline PN532 cards use;
-    zero or more than one active line reports "no card" (mid-rotation or a
-    wiring fault), which NfcRuntime already debounces via the removal grace
-    period.
+    active line reports a synthetic UID for that position through the same
+    NfcRuntime/NfcRouter pipeline PN532 cards use. Zero active lines is the
+    switch's own stable "all open" detent (e.g. an "off" click before
+    position 1) rather than a transient state, so it reports its own
+    synthetic UID too and can be enrolled like any other position. Two or
+    more active lines is always a genuine fault or a mid-rotation bridge
+    between detents -- never a stable resting state -- so it stays "no card",
+    which NfcRuntime already debounces via the removal grace period.
     """
 
     def __init__(self, pins, timeout=READ_TIMEOUT_S):
@@ -114,9 +122,11 @@ class SwitchReader:
             for position, pin in enumerate(self.pins)
             if self._lgpio._gpio_read(self.chip, pin) == 0
         ]
-        if len(active) != 1:
-            return None
-        return SWITCH_UID_PREFIX + bytes([active[0]])
+        if len(active) == 1:
+            return SWITCH_UID_PREFIX + bytes([active[0]])
+        if len(active) == 0:
+            return SWITCH_UID_PREFIX + bytes([SWITCH_OFF_POSITION])
+        return None
 
 
 def _switch_pins():

@@ -110,9 +110,13 @@ messagebox-contact remove 123456789@g.us
 `messagebox-nfc.service` and `messagebox-button.service` must be active, with
 `MSGBOX_NFC_DETECTION_BEEP` enabled. With `MSGBOX_NFC_TRANSPORT=switch`, each
 switch position acts as a card: after `add`, turn the switch away from and back
-onto the intended position. Enroll every position, because an unenrolled
-position is an unknown card and blocks sending. Use `--no-card` only when deliberately
-adding a contact without a card:
+onto the intended position. This includes a switch's stable "all contacts
+open" detent (e.g. an "off" click before position 1), which is its own
+enrollable position, not a transient state -- only two or more lines active at
+once (a genuine fault or a mid-rotation bridge between detents) is treated as
+no card. Enroll every position, because an unenrolled position is an unknown
+card and blocks sending. Use `--no-card` only when deliberately adding a
+contact without a card:
 
 ```sh
 messagebox-contact add "Direct example" 15551234567@s.whatsapp.net --no-card

@@ -61,9 +61,13 @@ class SwitchReaderTests(unittest.TestCase):
         reader = self._reader({5: 1, 6: 0, 12: 1})
         self.assertEqual(reader.read(), nfc.SWITCH_UID_PREFIX + bytes([1]))
 
-    def test_no_active_line_reports_no_card(self):
+    def test_no_active_line_reports_the_reserved_off_position(self):
+        # A single-pole switch's stable "all contacts open" detent (e.g. an
+        # "off" click) is a real resting position, not a transient state.
         reader = self._reader({5: 1, 6: 1, 12: 1})
-        self.assertIsNone(reader.read())
+        self.assertEqual(
+            reader.read(), nfc.SWITCH_UID_PREFIX + bytes([nfc.SWITCH_OFF_POSITION])
+        )
 
     def test_multiple_active_lines_report_no_card(self):
         reader = self._reader({5: 0, 6: 0, 12: 1})
