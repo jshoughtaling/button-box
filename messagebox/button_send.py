@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Message Box physical-button service.
 
-With MSGBOX_GUIDED_REPLY=1, one press starts exactly one session. The oldest
-incoming message (if any) is played; MSGBOX_AUTO_RECORD_AFTER_INCOMING controls
-whether playback continues into a reply recording. With no incoming message, a
-standalone family message is recorded. Recordings use silence-aware stop,
-private playback, and explicit send approval. Approved audio is atomically
-bound to its exact recipient in the durable outbox before the child flow
-returns.
+With MSGBOX_GUIDED_REPLY enabled (the default), one press starts exactly one
+session. The oldest incoming message (if any) is played;
+MSGBOX_AUTO_RECORD_AFTER_INCOMING controls whether playback continues into a
+reply recording. With no incoming message, a standalone family message is
+recorded. Recordings use silence-aware stop, private playback, and explicit
+send approval. Approved audio is atomically bound to its exact recipient in
+the durable outbox before the child flow returns.
 
-With the flag off (the default), the established hold-to-record / short-to-play
-behavior remains available as the immediate rollback.
+With MSGBOX_GUIDED_REPLY=0, the established hold-to-record / short-to-play
+behavior remains available as an immediate rollback.
 """
 
 import json
@@ -90,9 +90,9 @@ PLACE_TOKEN_WAV = os.environ.get(
     "MSGBOX_PLACE_TOKEN_WAV",
     str(APP_DIR / "sounds" / "nfc" / "place-token.wav"),
 )
-GUIDED_REPLY = env_flag("MSGBOX_GUIDED_REPLY", default=False)
+GUIDED_REPLY = env_flag("MSGBOX_GUIDED_REPLY", default=True)
 AUTO_RECORD_AFTER_INCOMING = env_flag(
-    "MSGBOX_AUTO_RECORD_AFTER_INCOMING", default=False
+    "MSGBOX_AUTO_RECORD_AFTER_INCOMING", default=True
 )
 GUIDED_SILENCE_SECONDS = float(os.environ.get("MSGBOX_GUIDED_SILENCE_SECONDS", "20"))
 PROMPT_DIR = Path(

@@ -136,7 +136,7 @@ class SelectionStore:
         with _locked_path(self.path):
             yield
 
-    def select(self, uid, jid, contacts_revision, *, new_presentation=True):
+    def select(self, uid, jid, contacts_revision, *, new_presentation=True, standing=False):
         uid = normalize_uid(uid)
         if not isinstance(jid, str) or not jid:
             raise NfcError("contact JID is invalid")
@@ -144,16 +144,28 @@ class SelectionStore:
             raise NfcError("contacts revision is invalid")
         now = self.clock()
         with self.locked():
+            restoring = False
             if new_presentation:
                 try:
                     self.claimed_path.unlink()
                 except FileNotFoundError:
                     pass
             elif self.claimed_path.exists():
-                return False
-            previous = self._load(max_age=None)
+                if not standing:
+                    return False
+                # A standing selector (e.g. a switch parked on a position)
+                # never "re-presents" the way a removed-and-replaced card
+                # does, so without this a single claim would permanently
+                # exhaust that position. Restore a fresh, claimable copy of
+                # what was last claimed instead; `changed` below is still
+                # computed from its actual contents, so this never produces
+                # a spurious re-announcement.
+                restoring = True
+            previous = self._load(
+                max_age=None, path=self.claimed_path if restoring else None
+            )
             changed = (
-                new_presentation
+                (new_presentation and not restoring)
                 or previous is None
                 or previous["uid"] != uid
                 or previous["jid"] != jid
@@ -199,8 +211,8 @@ class SelectionStore:
         with self.locked():
             return self._load(max_age=max_age)
 
-    def _load(self, *, max_age=DEFAULT_SELECTION_TTL_S):
-        payload = _load_json(self.path)
+    def _load(self, *, max_age=DEFAULT_SELECTION_TTL_S, path=None):
+        payload = _load_json(path if path is not None else self.path)
         if payload is None or payload.get("version") != SELECTION_VERSION:
             return None
         try:
@@ -534,7 +546,7 @@ class NfcRouter:
             request_id = request["request_id"]
         return self.enrollment.cancel(request_id)
 
-    def card_seen(self, raw_uid, *, new_presentation=True):
+    def card_seen(self, raw_uid, *, new_presentation=True, standing=False):
         uid = normalize_uid(raw_uid)
         recovered = self.reconcile_enrollment(new_presentation=new_presentation)
         if recovered is not None:
@@ -559,6 +571,7 @@ class NfcRouter:
             jid,
             document["revision"],
             new_presentation=new_presentation,
+            standing=standing,
         )
         return ScanResult(
             "selected" if changed else "refreshed",

@@ -182,11 +182,17 @@ class NfcRuntime:
         *,
         removal_grace=REMOVAL_GRACE_S,
         refresh=REFRESH_S,
+        standing=False,
     ):
         self.router = router
         self.announcer = announcer
         self.removal_grace = removal_grace
         self.refresh = refresh
+        # A standing selector (e.g. a switch) parks on one position instead
+        # of being tapped and removed like a card, so a claimed selection
+        # must stay claimable for as long as it's still present -- see
+        # SelectionStore.select's "standing" branch.
+        self.standing = standing
         self.uid = None
         self.last_seen = None
         self.last_refresh = None
@@ -212,7 +218,9 @@ class NfcRuntime:
             return result
         self.last_seen = now
         if self.last_refresh is None or now - self.last_refresh >= self.refresh:
-            result = self.router.card_seen(uid, new_presentation=False)
+            result = self.router.card_seen(
+                uid, new_presentation=False, standing=self.standing
+            )
             self.last_refresh = now
             if result.action == "unknown":
                 return None
@@ -236,7 +244,7 @@ def run_daemon():
     announcement_store = AnnouncementStore(NFC_ANNOUNCEMENT_FILE)
     nfc_router = router(announcement_store)
     announcer = Announcer(announcement_store)
-    runtime = NfcRuntime(nfc_router, announcer)
+    runtime = NfcRuntime(nfc_router, announcer, standing=(transport() == "switch"))
     nfc_router.selection.clear()
     announcement_store.clear()
     try:

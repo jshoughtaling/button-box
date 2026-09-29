@@ -192,6 +192,36 @@ class NfcTests(unittest.TestCase):
         self.assertEqual(presented_again.action, "selected")
         self.assertEqual(self.router.active_contact()["jid"], GRANDMA)
 
+    def test_standing_selector_stays_claimable_without_re_presenting(self):
+        # A switch parked on a position never "re-presents" like a removed
+        # and replaced card does. With standing=True, a claim must not
+        # permanently exhaust that position -- unlike the one-shot contract
+        # above, later presses should keep resolving to the same contact.
+        self.add_grandma(CARD_ONE)
+        self.add_family(CARD_TWO)
+        self.router.card_seen(CARD_ONE, new_presentation=True)
+
+        first = claim_selection(
+            self.contacts_path, self.selection_path, max_age=30, clock=self.clock
+        )
+        self.assertEqual(first["jid"], GRANDMA)
+
+        held = self.router.card_seen(CARD_ONE, new_presentation=False, standing=True)
+        self.assertEqual(held.action, "refreshed")
+        self.assertFalse(held.announce)
+        self.assertEqual(self.router.active_contact()["jid"], GRANDMA)
+
+        second = claim_selection(
+            self.contacts_path, self.selection_path, max_age=30, clock=self.clock
+        )
+        self.assertEqual(second["jid"], GRANDMA)
+
+        # Switching to a different contact is still picked up immediately.
+        self.contacts.assign_card(FAMILY, CARD_ONE)
+        switched = self.router.card_seen(CARD_ONE, new_presentation=False, standing=True)
+        self.assertEqual(switched.action, "selected")
+        self.assertEqual(self.router.active_contact()["jid"], FAMILY)
+
     def test_selection_expires_and_removal_leaves_it_latched(self):
         self.add_grandma(CARD_ONE)
         self.add_family(CARD_TWO)
@@ -474,6 +504,30 @@ class NfcTests(unittest.TestCase):
 
         self.assertEqual(runtime.observe(CARD_ONE, 12.0).action, "selected")
         self.assertEqual(len(announcer.results), 2)
+
+    def test_runtime_standing_mode_keeps_a_parked_position_claimable(self):
+        self.add_grandma(CARD_ONE)
+        self.add_family(CARD_TWO)
+        announcer = FakeAnnouncer()
+        runtime = NfcRuntime(
+            self.router, announcer, removal_grace=0.8, refresh=0.5, standing=True
+        )
+
+        runtime.observe(CARD_ONE, 10.0)
+        first = claim_selection(
+            self.contacts_path, self.selection_path, max_age=30, clock=self.clock
+        )
+        self.assertEqual(first["jid"], GRANDMA)
+
+        # The switch stays parked on the same position (no removal, no new
+        # UID) across several refresh cycles; each press should still find
+        # a claimable selection instead of falling through to the default.
+        runtime.observe(CARD_ONE, 10.6)
+        runtime.observe(CARD_ONE, 11.2)
+        second = claim_selection(
+            self.contacts_path, self.selection_path, max_age=30, clock=self.clock
+        )
+        self.assertEqual(second["jid"], GRANDMA)
 
     def test_runtime_requires_unknown_card_to_be_represented_for_enrollment(self):
         self.add_grandma(CARD_ONE)
