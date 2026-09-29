@@ -151,12 +151,21 @@ class SignalProvider(MessagingProvider):
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise ProviderError(f"signal-cli-rest-api request failed: {exc}") from exc
 
+    # signal-cli-rest-api's documented base64_attachments form is
+    # "data:<MIME-TYPE>;filename=<FILENAME>;base64,<DATA>" -- a bare base64
+    # string (no data: prefix) carries no content-type or filename at all,
+    # so the recipient's client has nothing to recognize it as audio by.
+    _VOICE_CONTENT_TYPES = {".m4a": "audio/mp4", ".ogg": "audio/ogg"}
+
     def send_voice(self, recipient, file_path, *, lock_wait=None):
         try:
             with open(file_path, "rb") as handle:
                 encoded = base64.b64encode(handle.read()).decode("ascii")
         except OSError as exc:
             raise ProviderError(f"could not read {file_path}: {exc}") from exc
+        extension = os.path.splitext(file_path)[1].lower()
+        content_type = self._VOICE_CONTENT_TYPES.get(extension, "application/octet-stream")
+        attachment = f"data:{content_type};filename=voice-message{extension};base64,{encoded}"
         try:
             status, body = self._request(
                 "POST",
@@ -165,7 +174,7 @@ class SignalProvider(MessagingProvider):
                     "message": "",
                     "number": self.number,
                     "recipients": [recipient],
-                    "base64_attachments": [encoded],
+                    "base64_attachments": [attachment],
                 },
             )
         except ProviderError as exc:

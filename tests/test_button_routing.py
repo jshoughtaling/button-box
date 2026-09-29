@@ -215,5 +215,36 @@ class PresenceIsNonBlockingTests(unittest.TestCase):
         released.set()
 
 
+class ConvertOutgoingVoiceTests(unittest.TestCase):
+    def test_signal_encodes_to_m4a_aac(self):
+        with mock.patch.object(button_send.subprocess, "run") as run:
+            run.return_value = mock.Mock(returncode=0)
+            out_path = button_send.convert_outgoing_voice("/tmp/in.wav", "guided", "signal")
+        self.assertTrue(out_path.endswith(".m4a"))
+        command = run.call_args[0][0]
+        self.assertIn("aac", command)
+        self.assertNotIn("libopus", command)
+
+    def test_whatsapp_and_unknown_channels_encode_to_ogg_opus(self):
+        for channel in ("whatsapp", "some-future-channel"):
+            with self.subTest(channel=channel):
+                with mock.patch.object(button_send.subprocess, "run") as run:
+                    run.return_value = mock.Mock(returncode=0)
+                    out_path = button_send.convert_outgoing_voice(
+                        "/tmp/in.wav", "guided", channel
+                    )
+                self.assertTrue(out_path.endswith(".ogg"))
+                self.assertIn("libopus", run.call_args[0][0])
+
+    def test_ffmpeg_failure_removes_partial_output_and_returns_none(self):
+        with mock.patch.object(button_send.subprocess, "run") as run, mock.patch.object(
+            button_send.os, "remove"
+        ) as remove:
+            run.return_value = mock.Mock(returncode=1)
+            result = button_send.convert_outgoing_voice("/tmp/in.wav", "guided", "signal")
+        self.assertIsNone(result)
+        remove.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

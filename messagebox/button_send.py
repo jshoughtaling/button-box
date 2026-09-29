@@ -445,6 +445,48 @@ def track_sent_for_receipts(sent, recipient, *, local_message_id, flow, channel=
     return message_id
 
 
+# Each channel's own client records voice notes in its own native format;
+# sending that format back gives the recipient's app the best chance of
+# recognizing the attachment as a voice message rather than a generic file.
+OUTGOING_VOICE_FORMAT = {
+    "whatsapp": {"ext": "ogg", "codec_args": ["-c:a", "libopus", "-b:a", "32k"]},
+    "signal": {"ext": "m4a", "codec_args": ["-c:a", "aac", "-b:a", "32k"]},
+}
+
+
+def convert_outgoing_voice(src_path, prefix, channel):
+    """Encode src_path into the destination channel's native voice format.
+
+    Returns the converted file's path, or None if ffmpeg failed (the caller
+    is responsible for cleaning up any partial output and the source file).
+    """
+    fmt = OUTGOING_VOICE_FORMAT.get(channel, OUTGOING_VOICE_FORMAT["whatsapp"])
+    out_path = os.path.join(TEMP_DIR, f"{prefix}-{uuid.uuid4().hex}.{fmt['ext']}")
+    converted = subprocess.run(
+        [
+            "ffmpeg",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(src_path),
+            *fmt["codec_args"],
+            "-ar",
+            "48000",
+            "-ac",
+            "1",
+            out_path,
+        ]
+    )
+    if converted.returncode != 0:
+        try:
+            os.remove(out_path)
+        except OSError:
+            pass
+        return None
+    return out_path
+
+
 def send_legacy_outbox_file(fname):
     """Keep pre-feature durable WAV jobs working with the family-group target."""
     path = os.path.join(OUTBOX_DIR, fname)
@@ -454,7 +496,6 @@ def send_legacy_outbox_file(fname):
         log(f"legacy send blocked for {fname}: no bound recipient")
         log_event("send_blocked", flow="legacy", reason="missing_recipient")
         return False
-    ogg = os.path.join(TEMP_DIR, f"legacy-{uuid.uuid4().hex}.ogg")
     duration = wait_s = None
     try:
         milliseconds, _, raw_duration = fname[:-4].partition("-")
@@ -462,30 +503,8 @@ def send_legacy_outbox_file(fname):
         duration = float(raw_duration)
     except ValueError:
         pass
-    converted = subprocess.run(
-        [
-            "ffmpeg",
-            "-loglevel",
-            "error",
-            "-y",
-            "-i",
-            path,
-            "-c:a",
-            "libopus",
-            "-b:a",
-            "32k",
-            "-ar",
-            "48000",
-            "-ac",
-            "1",
-            ogg,
-        ]
-    )
-    if converted.returncode != 0:
-        try:
-            os.remove(ogg)
-        except OSError:
-            pass
+    ogg = convert_outgoing_voice(path, "legacy", channel)
+    if ogg is None:
         bad = os.path.join(OUTBOX_DIR, ".bad")
         os.makedirs(bad, exist_ok=True)
         os.rename(path, os.path.join(bad, fname))
@@ -529,31 +548,8 @@ def send_legacy_outbox_file(fname):
 
 def send_guided_job(job):
     """Send only to the recipient stored atomically with this approved audio."""
-    ogg = os.path.join(TEMP_DIR, f"guided-{uuid.uuid4().hex}.ogg")
-    converted = subprocess.run(
-        [
-            "ffmpeg",
-            "-loglevel",
-            "error",
-            "-y",
-            "-i",
-            str(job.audio_path),
-            "-c:a",
-            "libopus",
-            "-b:a",
-            "32k",
-            "-ar",
-            "48000",
-            "-ac",
-            "1",
-            ogg,
-        ]
-    )
-    if converted.returncode != 0:
-        try:
-            os.remove(ogg)
-        except OSError:
-            pass
+    ogg = convert_outgoing_voice(job.audio_path, "guided", job.channel)
+    if ogg is None:
         outbox_store.set_state(job, "failed", increment_attempts=True)
         log_event("outbox_failed", message_id=job.message_id, reason="convert")
         log(f"guided conversion failed {job.message_id}; retained for parent")

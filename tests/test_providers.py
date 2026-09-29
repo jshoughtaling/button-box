@@ -139,7 +139,36 @@ class SignalProviderTests(unittest.TestCase):
         body = json.loads(request.data)
         self.assertEqual(body["number"], "+15550001111")
         self.assertEqual(body["recipients"], ["+15550002222"])
-        self.assertEqual(len(body["base64_attachments"]), 1)
+        [attachment] = body["base64_attachments"]
+        # Without a data: URI prefix, signal-cli has no content-type or
+        # filename to recognize the attachment as audio at all.
+        prefix, _, encoded = attachment.partition(",")
+        self.assertEqual(prefix, "data:audio/ogg;filename=voice-message.ogg;base64")
+        import base64
+
+        self.assertEqual(base64.b64decode(encoded), b"fake-audio-bytes")
+
+    def test_send_voice_m4a_uses_audio_mp4_content_type(self):
+        import tempfile
+        import os
+
+        requests = []
+
+        def opener(request, timeout):
+            requests.append(request)
+            return FakeHTTPResponse(201, {"timestamp": 1})
+
+        with tempfile.TemporaryDirectory() as directory:
+            audio_path = os.path.join(directory, "clip.m4a")
+            with open(audio_path, "wb") as handle:
+                handle.write(b"fake-aac-bytes")
+
+            provider = SignalProvider("http://127.0.0.1:8080", "+15550001111", opener=opener)
+            provider.send_voice("+15550002222", audio_path, lock_wait=None)
+
+        [attachment] = json.loads(requests[0].data)["base64_attachments"]
+        prefix, _, _ = attachment.partition(",")
+        self.assertEqual(prefix, "data:audio/mp4;filename=voice-message.m4a;base64")
 
     def test_send_voice_http_error_is_reported_as_failed_result(self):
         import tempfile
