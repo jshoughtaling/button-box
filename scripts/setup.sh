@@ -72,6 +72,8 @@ for path in \
   systemd/messagebox-wifi-change.service \
   systemd/messagebox-wifi-change.path \
   systemd/messagebox-nfc.service \
+  systemd/messagebox-signal-poller.service \
+  systemd/messagebox-signal-rest.service \
   systemd/onboarding/comitup.service.d/messagebox.conf \
   systemd/onboarding/comitup-web.service.d/messagebox.conf \
   systemd/onboarding/messagebox-onboarding-home.service \
@@ -349,7 +351,8 @@ sudo chmod 0644 "$APP_DIR"/ringtones/*.wav
 "$SCRIPT_DIR/install/wacli.sh"
 "$SCRIPT_DIR/install/comitup.sh"
 
-for name in messagebox-button messagebox-sync messagebox-poller messagebox-dash; do
+for name in messagebox-button messagebox-sync messagebox-poller messagebox-dash \
+  messagebox-signal-poller messagebox-signal-rest; do
   sudo install -o root -g root -m 0644 \
     "$REPO_DIR/systemd/$name.service" "/etc/systemd/system/$name.service"
 done
