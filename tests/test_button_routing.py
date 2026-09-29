@@ -1,6 +1,8 @@
 import json
 import sys
 import tempfile
+import threading
+import time
 import types
 import unittest
 from pathlib import Path
@@ -187,6 +189,30 @@ class ButtonRoutingTests(unittest.TestCase):
         self.assertEqual(captured["flow_kind"], "reply")
         self.assertEqual(captured["incoming_path"], str(incoming))
         finish.assert_called_once_with(claim)
+
+
+class PresenceIsNonBlockingTests(unittest.TestCase):
+    def test_a_slow_provider_does_not_stall_the_caller(self):
+        # capture_guided_recording/record_and_send_legacy poll the button for
+        # a stop press in the same loop that calls presence(); a provider
+        # that blocks on network I/O (SignalProvider's real HTTP call, unlike
+        # WhatsAppProvider's detached subprocess) must never eat that press.
+        released = threading.Event()
+        entered = threading.Event()
+
+        class SlowProvider:
+            def set_presence(self, kind, recipient, *, lock_wait):
+                entered.set()
+                released.wait(timeout=2)
+
+        with mock.patch.object(button_send, "get_provider", return_value=SlowProvider()):
+            started = time.monotonic()
+            button_send.presence("recording", GRANDMA, "signal")
+            elapsed = time.monotonic() - started
+
+        self.assertLess(elapsed, 0.5)
+        self.assertTrue(entered.wait(timeout=1))
+        released.set()
 
 
 if __name__ == "__main__":

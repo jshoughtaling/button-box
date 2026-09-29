@@ -770,16 +770,23 @@ def release_claim(claim):
 def react_played(meta):
     if not meta or not meta.get("msgid") or not meta.get("chat"):
         return
-    try:
-        get_provider(meta.get("channel", "whatsapp")).react(
-            meta["chat"],
-            meta["msgid"],
-            "🎧",
-            sender=meta.get("sender_jid"),
-            lock_wait=LOCK_WAIT,
-        )
-    except Exception as exc:
-        log(f"react error: {exc}")
+    # Fire-and-forget, same reasoning as presence(): this runs synchronously
+    # on the guided session's main thread, and SignalProvider.react() is a
+    # real blocking HTTP call (unlike WhatsAppProvider's detached subprocess)
+    # that must never stall the child's flow just to set a reaction emoji.
+    def send():
+        try:
+            get_provider(meta.get("channel", "whatsapp")).react(
+                meta["chat"],
+                meta["msgid"],
+                "🎧",
+                sender=meta.get("sender_jid"),
+                lock_wait=LOCK_WAIT,
+            )
+        except Exception as exc:
+            log(f"react error: {exc}")
+
+    threading.Thread(target=send, daemon=True).start()
 
 
 def wait_for_stable_open():
@@ -917,10 +924,19 @@ def get_provider(channel):
 
 
 def presence(kind, recipient, channel="whatsapp"):
-    try:
-        get_provider(channel).set_presence(kind, recipient, lock_wait=LOCK_WAIT)
-    except Exception as exc:
-        log(f"presence error: {exc}")
+    # Fire-and-forget: this runs inside the same tight loop that polls the
+    # button for a stop press, so it must never block on it. WhatsAppProvider
+    # already returns immediately (a detached subprocess), but SignalProvider
+    # makes a real, synchronous HTTP call with its own timeout -- without a
+    # thread, a slow or hung container silently eats the child's stop press
+    # for the length of that timeout instead of just failing to update.
+    def send():
+        try:
+            get_provider(channel).set_presence(kind, recipient, lock_wait=LOCK_WAIT)
+        except Exception as exc:
+            log(f"presence error: {exc}")
+
+    threading.Thread(target=send, daemon=True).start()
 
 
 def cleanup_temp_recordings():
