@@ -148,6 +148,25 @@ class SignalProviderTests(unittest.TestCase):
 
         self.assertEqual(base64.b64decode(encoded), b"fake-audio-bytes")
 
+    def test_send_voice_waits_longer_than_default_timeout(self):
+        import tempfile
+        import os
+
+        timeouts = []
+
+        def opener(request, timeout):
+            timeouts.append(timeout)
+            return FakeHTTPResponse(201, {"timestamp": 1})
+
+        with tempfile.TemporaryDirectory() as directory:
+            audio_path = os.path.join(directory, "clip.m4a")
+            with open(audio_path, "wb") as handle:
+                handle.write(b"x")
+            provider = SignalProvider("http://127.0.0.1:8080", "+15550001111", opener=opener)
+            provider.send_voice("+15550002222", audio_path, lock_wait=None)
+
+        self.assertGreater(timeouts[0], provider.timeout)
+
     def test_send_voice_m4a_uses_audio_mp4_content_type(self):
         import tempfile
         import os

@@ -130,14 +130,14 @@ class SignalProvider(MessagingProvider):
         self._opener = opener or urllib.request.urlopen
         self.timeout = timeout
 
-    def _request(self, method: str, path: str, payload: dict | None = None):
+    def _request(self, method: str, path: str, payload: dict | None = None, *, timeout=None):
         url = f"{self.base_url}{path}"
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
         request = urllib.request.Request(
             url, data=data, method=method, headers={"Content-Type": "application/json"}
         )
         try:
-            with self._opener(request, timeout=self.timeout) as response:
+            with self._opener(request, timeout=timeout or self.timeout) as response:
                 body = response.read()
                 parsed = json.loads(body) if body else None
                 return response.status, parsed
@@ -150,6 +150,11 @@ class SignalProvider(MessagingProvider):
             return exc.code, parsed
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise ProviderError(f"signal-cli-rest-api request failed: {exc}") from exc
+
+    # A send that times out client-side may still have been delivered, and the
+    # caller retries on failure, so give signal-cli enough time to answer
+    # rather than risk a duplicate voice message.
+    SEND_TIMEOUT = 120
 
     # signal-cli-rest-api's documented base64_attachments form is
     # "data:<MIME-TYPE>;filename=<FILENAME>;base64,<DATA>" -- a bare base64
@@ -176,6 +181,7 @@ class SignalProvider(MessagingProvider):
                     "recipients": [recipient],
                     "base64_attachments": [attachment],
                 },
+                timeout=self.SEND_TIMEOUT,
             )
         except ProviderError as exc:
             return SendResult(ok=False, provider_message_id=None, raw_stdout="", raw_stderr=str(exc))
