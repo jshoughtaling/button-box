@@ -135,18 +135,65 @@ The default public GPIO configuration is:
 | PN532 request | D16 |
 | PN532 data | I²C |
 
-Instead of a PN532 reader, a 4-position rotary switch can select recipients.
-Set `MSGBOX_NFC_TRANSPORT=switch` in `/etc/messagebox/env`, wire the switch
+Instead of a PN532 reader, a rotary switch can select recipients. Set
+`MSGBOX_NFC_TRANSPORT=switch` in `/etc/messagebox/env` and wire the switch
 common to GND and its positions to BCM GPIO 5, 12, 13, and 19
 (`MSGBOX_SWITCH_PINS`). On a multi-pole switch such as a 2P4T, use one pole's
-common and that same pole's four contacts only.
+common and that same pole's four contacts only. A switch with an "off" detent
+before position 1 has a fifth state, with every contact open; that detent is
+its own recipient position and must be enrolled like the others.
+
+### Example build: rotary switch in a repurposed phone
+
+<img src="docs/images/exterior-finished.jpg" alt="Finished Button Box built into a rotary-style phone case, with the illuminated button in the dial, a USB handset, and a recipient knob" width="360">
+
+This build uses a Raspberry Pi 4B, the illuminated arcade button, a USB handset
+for the microphone and speaker, and a rotary switch with a knob as the
+recipient selector. The wiring below follows the default software
+configuration. Check it against your own parts before applying power.
+
+```mermaid
+flowchart LR
+    subgraph Pi["Raspberry Pi 4B GPIO header"]
+        G17["GPIO 17 (pin 11)"]
+        G26["GPIO 26 (pin 37)"]
+        G5["GPIO 5 (pin 29)"]
+        G12["GPIO 12 (pin 32)"]
+        G13["GPIO 13 (pin 33)"]
+        G19["GPIO 19 (pin 35)"]
+        GND["GND (e.g. pin 39)"]
+    end
+    G17 --- BTN["Button switch contact"] --- GND
+    G26 --- R["Resistor"] --- LED["Button LED +"]
+    LED2["Button LED -"] --- GND
+    G5 --- P1["Switch position 0"]
+    G12 --- P2["Switch position 1"]
+    G13 --- P3["Switch position 2"]
+    G19 --- P4["Switch position 3"]
+    COM["Switch common"] --- GND
+    USB["USB handset"] --- PiUSB["Pi USB port"]
+```
+
+- The record button closes to GND. The software enables the Pi's internal
+  pull-up on GPIO 17.
+- The LED is driven high by GPIO 26. Put a current-limiting resistor in series,
+  sized for your LED's voltage and current; never drive it straight from the pin.
+- Switch positions are numbered from 0 in the order of `MSGBOX_SWITCH_PINS`.
+  With no contact closed the switch reads as the "off" position.
+- The handset connects over USB; no GPIO wiring is involved.
+
+| | |
+| --- | --- |
+| <img src="docs/images/interior-overview.jpg" alt="Inside the phone case with the Raspberry Pi mounted on the base and wires running to the button and switch" width="360"> | <img src="docs/images/interior-button-and-switch-wiring.jpg" alt="Close-up of the arcade button terminals and rotary switch connector" width="360"> |
+| Pi on standoffs in the base; the case lifts off. | Button terminals and the switch connector. |
+| <img src="docs/images/interior-pi-gpio-header.jpg" alt="Jumper wires attached to the Raspberry Pi GPIO header" width="360"> | |
+| Jumper wires on the GPIO header. | |
 
 > [!CAUTION]
-> A verified community wiring diagram is not in the repository yet. The pin
-> list above is a software configuration reference, not a complete wiring
-> diagram. Confirm button voltage, LED current limiting, connector sizes, Pi
-> pin numbering, and PN532 I²C mode before applying power. Never connect or
-> disconnect GPIO wiring while the Pi is powered.
+> This diagram is derived from the software defaults and one working build; it
+> is not a verified schematic. Confirm button voltage, LED current limiting,
+> connector sizes, Pi pin numbering, and switch pinout before applying power.
+> Never connect or disconnect GPIO wiring while the Pi is powered.
 
 For the printable prototype, download the [top](hardware/enclosure/button-box-enclosure-top.stl)
 and [bottom](hardware/enclosure/button-box-enclosure-bottom.stl) enclosure files.
