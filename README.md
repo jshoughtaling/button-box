@@ -1,7 +1,7 @@
 # Button Box
 
-**Button Box is a screen-free way for kids to send and receive WhatsApp voice
-messages with family on their own.**
+**Button Box is a screen-free way for kids to send and receive WhatsApp or Signal
+voice messages with family on their own.**
 
 Button Box is an open-source hardware and software project built around one
 large illuminated button. A child can record a voice note and send it to an
@@ -75,6 +75,36 @@ availability change.
 
 This is our current reference build. Other USB speakers and microphones, and other GPIO-connected buttons, may work electrically and with the software, but each substitution is unvalidated. The printable enclosure was designed for the parts in this list. If you change the speaker, microphone, or another part, the 3D-print designs may need a revision; do not assume the substitute will fit the same case.
 
+### Parts for the rotary-phone build (Amazon.de)
+
+The [example build in Step 2](#example-build-rotary-switch-in-a-repurposed-phone)
+puts a Raspberry Pi 4B, a USB handset, an arcade button, and a rotary switch
+inside a repurposed phone case. These are the parts that were bought for it.
+Prices are what was paid on Amazon.de in September 2026, including German VAT
+(EUR); several items come in multi-packs. Availability, sellers, and prices
+change, so check each listing before ordering.
+
+| Part | Approx. price | Notes |
+| --- | ---: | --- |
+| [Raspberry Pi 4 Model B, 2 GB](https://www.amazon.de/dp/B09TTNPB4J) | €73.43 | |
+| [Official Raspberry Pi USB-C power supply, 5.1 V / 3 A](https://www.amazon.de/dp/B07TZ89BT7) | €12.20 | |
+| [SanDisk Ultra 32 GB microSDHC, A1](https://www.amazon.de/dp/B08GY9NYRM) | €19.87 | |
+| [DIGITUS USB handset (Skype-style, USB-A)](https://www.amazon.de/dp/B000FIH4FQ) | €14.98 | Microphone and speaker |
+| [5 V LED illuminated arcade button, 4-pack](https://www.amazon.de/dp/B01N5Y8E2Z) | €6.91 | Built-in LED resistor; powered from the Pi's 3.3 V pin |
+| [RS1010 rotary band switch, 1 pole, 5 positions, 5-pack](https://www.amazon.de/dp/B0DHZMTCH2) | €12.59 | Recipient selector |
+| [Potentiometer knob set, 12 pieces](https://www.amazon.de/dp/B0GCFDWTYD) | €5.99 | Knob for the switch |
+| [3 mm diffused LED assortment, 250 pieces](https://www.amazon.de/dp/B07Q1813PN) | €5.34 | One red LED as the indicator |
+| [220 Ω metal-film resistors, ½ W, 100 pieces](https://www.amazon.de/dp/B0G8DGJ9D7) | €6.03 | Series resistor for the indicator LED |
+| [Dupont jumper wires, female-to-female, 160 pieces](https://www.amazon.de/dp/B0F98KBV61) | €7.99 | |
+| [M2.5 brass standoff and screw kit](https://www.amazon.de/dp/B0D7C33HC4) | €7.82 | Mounting the Pi; sold for the Pi 5 but the standoffs are standard M2.5 |
+| **Approx. total** | **€173** | Before the case, shipping, and tools |
+
+You will also need a soldering iron (a [30 W lead-free Velleman iron](https://www.amazon.de/dp/B009SND75K)
+cost €12.97) and a phone case or other enclosure. A rotary-style phone case was
+used for the photographed build. The software also supports PN532 NFC readers
+and cards, which this build does not use. Note that I had heat shrink tubing and a heat gun
+that were both useful for finishing the wiring neatly, but not required.
+
 ### What the build takes
 
 - Comfort following terminal commands one step at a time, or access to an AI
@@ -147,9 +177,9 @@ its own recipient position and must be enrolled like the others.
 
 <img src="docs/images/exterior-finished.jpg" alt="Finished Button Box built into a rotary-style phone case, with the illuminated button in the dial, a USB handset, and a recipient knob" width="360">
 
-This build uses a Raspberry Pi 4B, the illuminated arcade button, a USB handset
-for the microphone and speaker, and a rotary switch with a knob as the
-recipient selector. The wiring below follows the default software
+This build uses a Raspberry Pi 4B, the illuminated arcade button, a separate red
+indicator LED, a USB handset for the microphone and speaker, and a rotary
+switch with a knob as the recipient selector. The wiring below follows the default software
 configuration. Check it against your own parts before applying power.
 
 ```mermaid
@@ -157,6 +187,7 @@ flowchart LR
     subgraph Pi["Raspberry Pi 4B GPIO header"]
         G17["GPIO 17 (pin 11)"]
         G26["GPIO 26 (pin 37)"]
+        V33["3.3 V (pin 1)"]
         G5["GPIO 5 (pin 29)"]
         G12["GPIO 12 (pin 32)"]
         G13["GPIO 13 (pin 33)"]
@@ -164,8 +195,10 @@ flowchart LR
         GND["GND (e.g. pin 39)"]
     end
     G17 --- BTN["Button switch contact"] --- GND
-    G26 --- R["Resistor"] --- LED["Button LED +"]
-    LED2["Button LED -"] --- GND
+    V33 --- BLED["Arcade button LED +"]
+    BLED2["Arcade button LED -"] --- GND
+    G26 --- R["Resistor"] --- IND["Indicator LED +"]
+    IND2["Indicator LED -"] --- GND
     G5 --- P1["Switch position 0"]
     G12 --- P2["Switch position 1"]
     G13 --- P3["Switch position 2"]
@@ -176,11 +209,20 @@ flowchart LR
 
 - The record button closes to GND. The software enables the Pi's internal
   pull-up on GPIO 17.
-- The LED is driven high by GPIO 26. Put a current-limiting resistor in series,
-  sized for your LED's voltage and current; never drive it straight from the pin.
+- The arcade button's built-in LED is not under software control. It is
+  powered from a 3.3 V pin and stays on whenever the Pi is powered. This
+  button has a built-in resistor, so it needs no external one; check that your
+  button does before copying this.
+- The separate indicator LED is the one the software controls (`MSGBOX_LED_PIN`,
+  GPIO 26, driven high). Put a current-limiting resistor in series, sized for
+  that LED's voltage and current; never drive it straight from the pin.
 - Switch positions are numbered from 0 in the order of `MSGBOX_SWITCH_PINS`.
-  With no contact closed the switch reads as the "off" position.
+  With no contact closed the switch reads as the "off" position, so a 5-position
+  single-pole switch uses four contacts and leaves the fifth unconnected.
 - The handset connects over USB; no GPIO wiring is involved.
+
+The parts for this build are listed in
+[Step 1](#parts-for-the-rotary-phone-build-amazonde).
 
 | | |
 | --- | --- |
@@ -324,7 +366,8 @@ ssh -t admin@button-box-001.local messagebox-dev-onboard
 
 The guided workflow will:
 
-1. Link or verify WhatsApp.
+1. Link or verify WhatsApp. Signal is not linked here; see "Manage recipients"
+   below.
 2. Display recent chats with their exact WhatsApp identifiers.
 3. Configure the first approved recipient.
 4. Optionally configure the private dashboard.
@@ -377,6 +420,30 @@ continuations of one another.
 **Done when:** the browser reports that Button Box is ready and the intended
 default and optional tag mappings pass the physical scenarios below.
 
+### Manage recipients
+
+Run these on the Pi (for example over SSH) to review or change who the box can
+send to. Use the exact chat identifier shown by `list` or onboarding; never
+guess one.
+
+```sh
+messagebox-contact list
+messagebox-contact add "Family" 123456789@g.us
+messagebox-contact remove 123456789@g.us
+```
+
+`list` shows each contact and how many cards or switch positions are enrolled;
+it never prints card IDs. `remove` deletes the contact and all of its cards or
+positions. After `add`, present a card, or turn the recipient switch away from
+and back onto the intended position, to enroll it. With a rotary switch, enroll
+every position, including "off"; an unenrolled position blocks sending.
+
+Signal contacts use the same command with `--channel signal`, and an identifier
+of `+15551234567` or `group.<base64id>`. The browser portal does not set up
+Signal yet, so Signal contacts are added with this command. See
+[developer onboarding](docs/developer-onboarding.md#contacts-and-routing) for
+the default recipient and selection rules.
+
 ## Step 8 — Test the hardware
 
 The terminal-assisted onboarding offers this test automatically. To run it
@@ -392,7 +459,7 @@ The interactive test checks:
 - internet access
 - speaker
 - microphone and playback
-- button LED
+- status LED (the GPIO-controlled one; an always-on button LED is not tested)
 - record button
 - PN532 reader and an NFC card, or every recipient-switch position when
   `MSGBOX_NFC_TRANSPORT=switch`
@@ -435,6 +502,8 @@ on the physical device.
 | Raspberry Pi Zero 2 W | **Supported device target; install gap** | The device target is supported, but the current public provisioning path still contains a Pi-4-only Comitup gate and needs clean-install validation. |
 | Wi-Fi and WhatsApp browser onboarding | **Experimental** | The physical Pi 4B flow has reached verified WhatsApp readiness. |
 | Recipient and NFC browser onboarding | **Experimental** | Repository coverage is included; fresh-Pi NFC and final activation acceptance are still required. |
+| Rotary-switch recipient selector | **Experimental** | Built and exercised on one physical Pi 4B in a repurposed phone case. See the [example build](#example-build-rotary-switch-in-a-repurposed-phone). |
+| Signal channel | **Experimental** | Voice messages can be sent through signal-cli-rest-api. Contacts are added by command, not the browser portal. |
 | Enclosure | **Prototype** | Printable [top and bottom STL files](hardware/enclosure/README.md) are available. |
 | Complete first-message journey from public instructions | **In progress** | Physical proof is still needed for recipient setup, NFC where used, runtime startup, send, reply, playback, and reboot using only this README. |
 
@@ -447,8 +516,17 @@ reporting success or opening a pull request.
 ### The Pi hostname does not resolve
 
 Confirm that the Pi and computer are on a compatible network. Try the hostname
-you set in Imager. If necessary, inspect your router's device list rather than
-guessing a fixed IP address.
+you set in Imager. Some routers and networks block the multicast DNS that
+`.local` names rely on. If necessary, find the Pi's address in your router's
+device list, or on the Pi's own console with `ip -br addr`, and use it in place
+of the hostname:
+
+```sh
+ssh admin@192.168.0.50
+./scripts/provision.sh admin@192.168.0.50
+```
+
+Reserve that address for the Pi in your router so it does not change.
 
 ### SSH says `Permission denied (publickey)`
 
@@ -507,8 +585,8 @@ NFC identifiers, recordings, private addresses, and authentication state.
 
 ## Privacy and security
 
-Button Box stores configuration, approved contacts, WhatsApp authentication
-state, and queued audio locally on the Pi. These files must never be committed
+Button Box stores configuration, approved contacts, WhatsApp and Signal
+authentication state, and queued audio locally on the Pi. These files must never be committed
 to Git or copied into public diagnostics.
 
 The dashboard has no login. Leave it disabled unless you understand the network
@@ -526,11 +604,15 @@ update.
 Before updating a working physical box:
 
 1. Confirm the exact source commit.
-2. Stop Button Box services.
+2. Stop Button Box services with `sudo messageboxctl stop`; the installer
+   refuses to run while they are active.
 3. Preserve rollback material.
-4. Provision the reviewed tree.
-5. Verify services and real device behavior.
-6. Keep repository validation separate from physical acceptance.
+4. Run `./scripts/provision.sh admin@button-box-001.local` from your computer.
+   Provisioning copies your working tree to the Pi; nothing is pulled on the Pi.
+5. Start the services again with `sudo messageboxctl start`; provisioning
+   leaves them stopped.
+6. Verify services and real device behavior.
+7. Keep repository validation separate from physical acceptance.
 
 ## Get help
 
@@ -583,7 +665,7 @@ GPIO, NFC, Wi-Fi, or WhatsApp behaviors were physically tested.
 - `scripts/dev/`: experimental developer onboarding and hardware checks
 - `systemd/`: device services and runtime target
 - `config/`: public configuration and pinned dependencies
-- `hardware/`: [hardware list and printable enclosure files](hardware/README.md)
+- `hardware/`: [reference hardware list and printable enclosure files](hardware/README.md)
 - `sounds/`: audio licensing requirements and future assets
 - `tests/`: synthetic unit and contract tests
 - `docs/`: architecture, installation, testing, and developer documentation

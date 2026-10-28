@@ -16,6 +16,11 @@
 
 The parts above are the reference build. Other USB speakers and microphones, and other GPIO-connected buttons, may work electrically and with the software, but each substitution is unvalidated. The printable enclosure was designed for the parts in this list. If you change the speaker, microphone, or another part, the 3D-print designs may need a revision; do not assume the substitute will fit the same case.
 
+## Rotary-phone build
+
+The parts for the [rotary-phone example build](../README.md#parts-for-the-rotary-phone-build-amazonde)
+are listed, with Amazon.de links, in the main README.
+
 ## Enclosure
 
 The prototype Button Box enclosure has two printable parts:
